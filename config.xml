@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<widget id="com.example.airlift" version="1.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0">
+    <name>Airlift</name>
+    <description>Share your mobile data over a local hotspot + proxy</description>
+    <content src="index.html" />
+    <preference name="android-minSdkVersion" value="26" />
+    <preference name="Orientation" value="portrait" />
+    <plugin name="cordova-plugin-hotspotproxy" spec="./plugins/cordova-plugin-hotspotproxy" />
+</widget>

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Airlift</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 24px; background: #101418; color: #e8edf2; }
+  h1 { font-size: 22px; margin: 0 0 16px; }
+  button { width: 100%; padding: 16px; font-size: 18px; border: 0; border-radius: 12px; background: #2f80ed; color: #fff; }
+  button.on { background: #d64545; }
+  #info { margin-top: 20px; line-height: 1.7; display: none; }
+  .k { color: #8a96a3; font-size: 13px; text-transform: uppercase; }
+  .v { font-size: 18px; font-family: monospace; word-break: break-all; margin-bottom: 8px; }
+  #msg { margin-top: 16px; color: #f2b84b; }
+  ol { color: #aab4be; font-size: 14px; padding-left: 20px; }
+  label.opt { display: block; margin: 14px 0; font-size: 15px; }
+  input[type=checkbox] { width: 20px; height: 20px; vertical-align: middle; margin-right: 8px; }
+  #opts { margin-top: 18px; }
+  #examples { margin-top: 24px; }
+  summary { padding: 8px 0; font-size: 16px; }
+  pre { background: #1a2027; padding: 12px; border-radius: 8px; font-size: 12px; overflow-x: auto; white-space: pre; color: #cfd8e1; }
+</style>
+</head>
+<body>
+<h1>Airlift</h1>
+<button id="btn" disabled>Loading…</button>
+<div id="opts">
+  <label class="opt"><input type="checkbox" id="optBg" checked> Keep running in background (shows a notification)</label>
+  <label class="opt"><input type="checkbox" id="optWake" checked> Stay awake when screen is locked (uses more battery)</label>
+  <label class="opt"><input type="checkbox" id="optBat"> Exempt from battery optimization</label>
+  <div class="k">Background options apply the next time you start sharing.</div>
+</div>
+<div id="msg"></div>
+<div id="info">
+  <div class="k">Wi-Fi name</div><div class="v" id="ssid"></div>
+  <div class="k">Password</div><div class="v" id="pass"></div>
+  <div class="k">Proxy address (try each IP)</div><div class="v" id="proxy"></div>
+  <ol>
+    <li>Join the Wi-Fi above on the other device.</li>
+    <li>Browsers: Wi-Fi settings → Proxy → Manual, use the IP and HTTP port.</li>
+    <li>Email, downloads, other apps: set the app's proxy to SOCKS5 with the IP and SOCKS5 port (works for any TCP port).</li>
+    <li>Apps with no proxy option: on the other device, use a VPN-to-SOCKS app so everything goes through it.</li>
+  </ol>
+</div>
+<div id="examples">
+  <div class="k">Setting the proxy on the other device</div>
+  <details><summary>macOS</summary><pre id="exMac"></pre></details>
+  <details><summary>Windows</summary><pre id="exWin"></pre></details>
+  <details><summary>Linux</summary><pre id="exLin"></pre></details>
+</div>
+<script src="cordova.js"></script>
+<script>
+document.addEventListener('deviceready', function () {
+  var btn = document.getElementById('btn'), msg = document.getElementById('msg'), info = document.getElementById('info');
+  var running = false;
+  var bg = document.getElementById('optBg'), wk = document.getElementById('optWake'), bat = document.getElementById('optBat');
+  try {
+    if (localStorage.getItem('bg') !== null) bg.checked = localStorage.getItem('bg') === '1';
+    if (localStorage.getItem('wk') !== null) wk.checked = localStorage.getItem('wk') === '1';
+  } catch (e) {}
+  function save() { try { localStorage.setItem('bg', bg.checked ? '1' : '0'); localStorage.setItem('wk', wk.checked ? '1' : '0'); } catch (e) {} }
+  wk.onchange = function () { if (wk.checked) bg.checked = true; save(); };
+  bg.onchange = function () { if (!bg.checked) wk.checked = false; save(); };
+  function getOpts() { return { foreground: bg.checked, wakelock: wk.checked }; }
+  function refreshBat() { HotspotProxy.batteryStatus(function (v) { bat.checked = !!v; bat.disabled = !!v; }); }
+  bat.onchange = function () { if (bat.checked) HotspotProxy.batteryExempt(); };
+  document.addEventListener('resume', refreshBat, false);
+  refreshBat();
+  var EX = {
+    exMac: `# Terminal (zsh/bash), this session only
+export http_proxy=http://{ip}:{http}
+export https_proxy=http://{ip}:{http}
+export no_proxy=localhost,127.0.0.1
+
+# Undo
+unset http_proxy https_proxy no_proxy
+
+# System-wide (apps that honor macOS proxy settings)
+networksetup -setwebproxy "Wi-Fi" {ip} {http}
+networksetup -setsecurewebproxy "Wi-Fi" {ip} {http}
+networksetup -setsocksfirewallproxy "Wi-Fi" {ip} {socks}
+
+# Undo system-wide
+networksetup -setwebproxystate "Wi-Fi" off
+networksetup -setsecurewebproxystate "Wi-Fi" off
+networksetup -setsocksfirewallproxystate "Wi-Fi" off`,
+    exWin: `:: Command Prompt, this window only
+set http_proxy=http://{ip}:{http}
+set https_proxy=http://{ip}:{http}
+
+# PowerShell, this window only
+$env:http_proxy = "http://{ip}:{http}"
+$env:https_proxy = "http://{ip}:{http}"
+
+# PowerShell undo
+Remove-Item Env:http_proxy, Env:https_proxy
+
+# Keep for new windows
+setx http_proxy http://{ip}:{http}
+setx https_proxy http://{ip}:{http}
+
+# System-wide for Windows tools (run as Admin)
+netsh winhttp set proxy {ip}:{http}
+netsh winhttp reset proxy`,
+    exLin: `# Terminal (bash/zsh), this session only
+export http_proxy=http://{ip}:{http}
+export https_proxy=http://{ip}:{http}
+export no_proxy=localhost,127.0.0.1
+
+# Keep the variables when using sudo
+sudo -E pacman -Syu
+
+# One-off commands
+curl -x http://{ip}:{http} https://example.com
+curl --socks5-hostname {ip}:{socks} https://example.com
+
+# Undo
+unset http_proxy https_proxy no_proxy`
+  };
+  function fillExamples(ip, http, socks) {
+    Object.keys(EX).forEach(function (id) {
+      document.getElementById(id).textContent = EX[id]
+        .split('{ip}').join(ip).split('{http}').join(http).split('{socks}').join(socks);
+    });
+  }
+  function render(on, d) {
+    running = on;
+    btn.disabled = false;
+    btn.textContent = on ? 'Stop sharing' : 'Start sharing';
+    btn.className = on ? 'on' : '';
+    info.style.display = on ? 'block' : 'none';
+    if (on && d) {
+      fillExamples(d.ips[0] || 'PHONE_IP', d.httpPort, d.socksPort);
+      document.getElementById('ssid').textContent = d.ssid;
+      document.getElementById('pass').textContent = d.password;
+      document.getElementById('proxy').innerHTML = d.ips.join('<br>') + '<br><br>HTTP port: ' + d.httpPort + '<br>SOCKS5 port: ' + d.socksPort;
+    }
+  }
+  btn.onclick = function () {
+    msg.textContent = '';
+    btn.disabled = true;
+    if (running) {
+      HotspotProxy.stop(function () { render(false); }, function (e) { msg.textContent = e; render(false); });
+    } else {
+      HotspotProxy.start(getOpts(), function (d) { render(true, d); }, function (e) { msg.textContent = 'Failed: ' + e; render(false); });
+    }
+  };
+  fillExamples('PHONE_IP', 8080, 1080);
+  HotspotProxy.status(function (d) { render(d.running, d); }, function () { render(false); });
+}, false);
+</script>
+</body>
+</html>

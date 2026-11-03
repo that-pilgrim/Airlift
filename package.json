@@ -1,0 +1,1 @@
+{ "name": "airlift", "version": "1.0.0", "displayName": "Airlift", "cordova": { "platforms": ["android"] } }
