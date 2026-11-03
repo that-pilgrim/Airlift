@@ -48,7 +48,7 @@ Some carriers throttle or block traffic they detect as tethering. Airlift can't 
 ## Get the source
 
 ```
-git clone https://github.com/YOUR-USERNAME/airlift.git
+git clone https://github.com/that-pilgrim/airlift.git
 cd airlift
 ```
 
